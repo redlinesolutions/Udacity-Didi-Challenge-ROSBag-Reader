@@ -20,17 +20,16 @@ import numpy as np
 import pygame
 import rosbag
 import datetime
+from cv_bridge import CvBridge
 
 #from keras.models import model_from_json
 
+bridge = CvBridge()
 pygame.init()
-size = (320*3, 240)
-pygame.display.set_caption("Udacity SDC challenge 2: camera video viewer")
-screen = pygame.display.set_mode(size, pygame.DOUBLEBUF)
-
-imgleft = pygame.surface.Surface((320,240),0,24).convert()
-imgcenter = pygame.surface.Surface((320,240),0,24).convert()
-imgright = pygame.surface.Surface((320,240),0,24).convert()
+video_max_width=875
+size = None
+pygame.display.set_caption("Udacity Team-SF: ROSbag viewer")
+screen = None
 
 # ***** get perspective transform for images *****
 from skimage import transform as tf
@@ -111,6 +110,22 @@ def draw_path_on(img, speed_ms, angle_steers, color=(0,0,255), shift_from_mid=0)
   path_y, _ = calc_lookahead_offset(speed_ms, angle_steers, path_x)
   draw_path(img, path_x, path_y, color, shift_from_mid)
 
+def print_msg(topic, msg, t):
+    if topic in ['/rosout','/cloud_nodelet/parameter_descriptions','/tf', '/cloud_nodelet/parameter_updates']:
+        pass
+    elif topic in ['/radar/tracks','/radar/range','/obs1/gps/time','/gps/time']:
+        pass
+    elif topic in ['/radar/points']:
+        #print(topic, msg.header.seq, t-msg.header.stamp, msg)
+        pass
+    elif topic == '/image_raw':
+        print(topic, msg.header.seq, t-msg.header.stamp, t)
+    elif topic == '/gps/fix':
+        print(topic, msg.header.seq, t-msg.header.stamp, msg.latitude, msg.longitude, msg.altitude, t)
+    else:
+        pass
+        #print(topic, msg.header.seq, t-msg.header.stamp, msg, t)
+
 # ***** main loop *****
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Udacity SDC Challenge-2 Video viewer')
@@ -122,48 +137,38 @@ if __name__ == "__main__":
   skip = args.skip
   startsec = 0
 
-  print "reading rosbag ", dataset
+  print("reading rosbag ", dataset)
   bag = rosbag.Bag(dataset, 'r')
-  for topic, msg, t in bag.read_messages(topics=['/center_camera/image_color','/right_camera/image_color','/left_camera/image_color','/vehicle/steering_report']):
+  for topic, msg, t in bag.read_messages(topics=['/image_raw','/gps/fix']):
     if startsec == 0:
         startsec = t.to_sec()
         if skip < 24*60*60:
             skipping = t.to_sec() + skip
-            print "skipping ", skip, " seconds from ", startsec, " to ", skipping, " ..."
+            print("skipping ", skip, " seconds from ", startsec, " to ", skipping, " ...")
         else:
             skipping = skip
-            print "skipping to ", skip, " from ", startsec, " ..."
+            print("skipping to ", skip, " from ", startsec, " ...")
     else:
         if t.to_sec() > skipping:
-            if topic in ['/center_camera/image_color','/right_camera/image_color','/left_camera/image_color']:
-                print(topic, msg.header.seq, t-msg.header.stamp, msg.height, msg.width, msg.encoding, t)
-            else:
-                print(topic, msg.header.seq, t-msg.header.stamp, msg.steering_wheel_angle, t)
-                angle_steers = msg.steering_wheel_angle
-        
-            try: 
-                if topic in ['/center_camera/image_color','/right_camera/image_color','/left_camera/image_color']:
-                    # RGB_str = msg.data
-                    RGB_str = np.fromstring(msg.data, dtype='uint8').reshape((640*480),3)[:, (2, 1, 0)].tostring() 
-        
-                    if topic == '/left_camera/image_color':
-                        imgleft = pygame.transform.scale(pygame.image.fromstring(RGB_str, (640, 480), 'RGB'), (320, 240))
-                    else:
-                        if topic == '/center_camera/image_color':
-                            imgcenter = pygame.transform.scale(pygame.image.fromstring(RGB_str, (640, 480), 'RGB'), (320, 240))
-                        else:
-                            imgright = pygame.transform.scale(pygame.image.fromstring(RGB_str, (640, 480), 'RGB'), (320, 240))
-        
-            except Exception, e:
-               print("Error converting string to PyGame surface in StringToSurface", e)
+            print_msg(topic, msg, t)
 
-            draw_path_on(imgleft, 0, angle_steers*20, (0,0,255), -10)
-            draw_path_on(imgcenter, 0, angle_steers*20, (0,0,255), -20)
-            draw_path_on(imgright, 0, angle_steers*20, (0,0,255), 0)
+            if topic in ['/image_raw']:
+                #RGB_str = msg.data
+                cv_img = bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8")
+                cv_img = cv_img.transpose((1, 0, 2))
 
-            screen.blit(imgleft, (0,0))
-            screen.blit(imgcenter, (320,0))
-            screen.blit(imgright, (640,0))
+                if (size == None):
+                    ratio = float(cv_img.shape[1]) / video_max_width
+                    size = (int(ratio * cv_img.shape[0]), int(ratio * cv_img.shape[1]))
+                    screen = pygame.display.set_mode(size, pygame.DOUBLEBUF)
 
-            pygame.display.flip()
+                img = pygame.pixelcopy.make_surface(cv_img)
+                img = pygame.transform.scale(img, size)
 
+            #draw_path_on(imgleft, 0, angle_steers*20, (0,0,255), -10)
+            #draw_path_on(imgcenter, 0, angle_steers*20, (0,0,255), -20)
+            #draw_path_on(imgright, 0, angle_steers*20, (0,0,255), 0)
+
+            if screen:
+                screen.blit(img, (0,0))
+                pygame.display.flip()
