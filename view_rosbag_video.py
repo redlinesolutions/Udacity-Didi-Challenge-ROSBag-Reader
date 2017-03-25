@@ -20,15 +20,18 @@ import numpy as np
 import pygame
 import rosbag
 import datetime
+import sensor_msgs.point_cloud2
 from cv_bridge import CvBridge
 
 #from keras.models import model_from_json
 
+appTitle = "Udacity Team-SF: ROSbag viewer"
 bridge = CvBridge()
 pygame.init()
 video_max_width=875
 size = None
-pygame.display.set_caption("Udacity Team-SF: ROSbag viewer")
+startsec = 0
+pygame.display.set_caption(appTitle)
 screen = None
 
 # ***** get perspective transform for images *****
@@ -110,25 +113,46 @@ def draw_path_on(img, speed_ms, angle_steers, color=(0,0,255), shift_from_mid=0)
   path_y, _ = calc_lookahead_offset(speed_ms, angle_steers, path_x)
   draw_path(img, path_x, path_y, color, shift_from_mid)
 
-def print_msg(topic, msg, t):
+def print_msg(topic, msg, time):
+
+    t = time.to_sec()
+    since_start = msg.header.stamp.to_sec()-startsec
+
     if topic in ['/rosout','/cloud_nodelet/parameter_descriptions','/tf', '/cloud_nodelet/parameter_updates']:
         pass
     elif topic in ['/radar/tracks','/radar/range','/obs1/gps/time','/gps/time']:
         pass
-    elif topic in ['/radar/points']:
-        #print(topic, msg.header.seq, t-msg.header.stamp, msg)
+    elif topic in ['/radar/points','/velodyne_points']:
+
+        points = sensor_msgs.point_cloud2.read_points(msg, skip_nans=True)
+        arrPoints = []
+        for point in points:
+            pt_x = point[0]
+            pt_y = point[1]
+            pt_z = point[2]
+            arrPoints.append(point)
+        print(topic, msg.header.seq, since_start, 'nPoints=', len(arrPoints), t)
+
+    elif topic in ['/gps/rtkfix','/obs1/gps/rtkfix']:
+
+        #print(topic, msg.header.seq, t-tsec, 'nPoints=', len(point))
         pass
+
+    elif topic == '/radar/range':
+
+        print(topic, msg.header.seq, since_start, msg.radiation_type, msg.field_of_view, msg.min_range, msg.max_range, msg.range, t)
+
     elif topic == '/image_raw':
-        print(topic, msg.header.seq, t-msg.header.stamp, t)
+        print(topic, msg.header.seq, since_start, t)
     elif topic == '/gps/fix':
-        print(topic, msg.header.seq, t-msg.header.stamp, msg.latitude, msg.longitude, msg.altitude, t)
+        print(topic, msg.header.seq, since_start, msg.latitude, msg.longitude, msg.altitude, t)
     else:
         pass
         #print(topic, msg.header.seq, t-msg.header.stamp, msg, t)
 
 # ***** main loop *****
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description='Udacity SDC Challenge-2 Video viewer')
+  parser = argparse.ArgumentParser(description=appTitle)
   parser.add_argument('--dataset', type=str, default="dataset.bag", help='Dataset/ROS Bag name')
   parser.add_argument('--skip', type=int, default="0", help='skip seconds')
   args = parser.parse_args()
@@ -136,10 +160,17 @@ if __name__ == "__main__":
   dataset = args.dataset
   skip = args.skip
   startsec = 0
+  topics_list = [
+    '/image_raw',
+    '/gps/fix',
+    '/radar/points',
+    '/velodyne_points',
+    '/radar/range'
+  ]
 
   print("reading rosbag ", dataset)
   bag = rosbag.Bag(dataset, 'r')
-  for topic, msg, t in bag.read_messages(topics=['/image_raw','/gps/fix']):
+  for topic, msg, t in bag.read_messages(topics=topics_list):
     if startsec == 0:
         startsec = t.to_sec()
         if skip < 24*60*60:
