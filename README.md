@@ -36,7 +36,6 @@ To run via Docker on Mac:
 * Find out your host machine's IP address using 'ifconfig'
 * Setup your DISPLAY environment to point to your host's XQuartz
 
-`
-DISPLAY=<HOST_IP_ADDRESS>:0
-export DISPLAY
-`
+
+    DISPLAY=<HOST_IP_ADDRESS>:0
+    export DISPLAY
