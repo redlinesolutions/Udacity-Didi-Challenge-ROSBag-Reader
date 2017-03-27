@@ -16,11 +16,11 @@ Reads and displays values and images in a ROSBag file
 Most of these can be installed with a simple 'pip install MODULE' command
 
 * numpy
-* opencv
+* opencv (pip install opencv-python)
 * pygame
 * rosbag
 * rospkg
-* cv_bridge (pip install cv-bridge)
+* cv_bridge (apt-get install ros-kinetic-cv-bridge)
 
 ## Command Line
 
